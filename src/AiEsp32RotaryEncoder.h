@@ -43,6 +43,7 @@ private:
 
 	bool _circleValues = false;
 	bool isEnabled = true;
+	volatile bool wasClicked = false;
 
 	uint8_t encoderAPin = AIESP32ROTARYENCODER_DEFAULT_A_PIN;
 	uint8_t encoderBPin = AIESP32ROTARYENCODER_DEFAULT_B_PIN;
@@ -54,10 +55,12 @@ private:
 	long _maxEncoderValue = 1 << 15;
 
 	uint8_t old_AB;
-	long lastReadEncoder0Pos;
-	bool previous_butt_state;
+	long lastReadEncoder0Pos = 0;
+	volatile long lastReadButtonPressed = 0;
+	volatile bool previous_butt_state;
+	volatile long lastLongDuration = 0;
 
-	ButtonState buttonState;
+	volatile ButtonState buttonState;
 
 	int8_t enc_states[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
 	void (*ISR_callback)();
@@ -83,6 +86,7 @@ public:
 	void setup(void (*ISR_callback)(void));
 	void setup(void (*ISR_callback)(void), void (*ISR_button)(void));
 	void begin();
+	void update();
 	void reset(long newValue = 0);
 	void enable();
 	void disable();
@@ -95,7 +99,8 @@ public:
 	void setAcceleration(unsigned long acceleration) { this->rotaryAccelerationCoef = acceleration; }
 	void disableAcceleration() { setAcceleration(0); }
 
-	bool isEncoderButtonClicked(unsigned long maximumWaitMilliseconds = 300);
+	bool isEncoderButtonClicked();
+	bool isEncoderButtonLongClicked(long duration = 500);
 	bool isEncoderButtonDown();
 };
 #endif

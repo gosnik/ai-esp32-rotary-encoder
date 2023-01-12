@@ -102,7 +102,11 @@ void IRAM_ATTR AiEsp32RotaryEncoder::readButton_ISR()
 	portENTER_CRITICAL_ISR(&(this->buttonMux));
 #endif
 
-	uint8_t butt_state = !digitalRead(this->encoderButtonPin);
+	uint8_t butt_state = digitalRead(this->encoderButtonPin);
+	long time = millis();
+
+	//Serial.print("Btn:");
+	//Serial.println(butt_state);
 
 	if (!this->isEnabled)
 	{
@@ -110,20 +114,24 @@ void IRAM_ATTR AiEsp32RotaryEncoder::readButton_ISR()
 	}
 	else if (butt_state && !this->previous_butt_state)
 	{
+		lastReadButtonPressed = time;
 		this->previous_butt_state = true;
-		Serial.println("Button Pushed");
 		buttonState = BUT_PUSHED;
 	}
 	else if (!butt_state && this->previous_butt_state)
 	{
+		if (lastReadButtonPressed > 0 && time - lastReadButtonPressed > 50)
+		{
+			wasClicked = true;
+		}
+		lastReadButtonPressed = 0;
+		//lastLongDuration = 0;
 		this->previous_butt_state = false;
-		Serial.println("Button Released");
 		buttonState = BUT_RELEASED;
 	}
 	else
 	{
 		buttonState = (butt_state ? BUT_DOWN : BUT_UP);
-		Serial.println(butt_state ? "BUT_DOWN" : "BUT_UP");
 	}
 
 #if defined(ESP8266)
@@ -146,8 +154,9 @@ AiEsp32RotaryEncoder::AiEsp32RotaryEncoder(uint8_t encoder_APin, uint8_t encoder
 	pinMode(this->encoderAPin, INPUT_PULLUP);
 	pinMode(this->encoderBPin, INPUT_PULLUP);
 #else
-	pinMode(this->encoderAPin, INPUT_PULLDOWN);
-	pinMode(this->encoderBPin, INPUT_PULLDOWN);
+	pinMode(this->encoderAPin, INPUT_PULLUP);
+	pinMode(this->encoderBPin, INPUT_PULLUP);
+	pinMode(this->encoderButtonPin, INPUT_PULLDOWN);
 #endif
 }
 
@@ -183,8 +192,7 @@ void AiEsp32RotaryEncoder::setup(void (*ISR_callback)(void), void (*ISR_button)(
 {
 	attachInterrupt(digitalPinToInterrupt(this->encoderAPin), ISR_callback, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(this->encoderBPin), ISR_callback, CHANGE);
-	attachInterrupt(digitalPinToInterrupt(this->encoderButtonPin), ISR_button, RISING);
-	//attachInterrupt(digitalPinToInterrupt(this->encoderButtonPin), ISR_button, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(this->encoderButtonPin), ISR_button, CHANGE);
 }
 
 void AiEsp32RotaryEncoder::setup(void (*ISR_callback)(void))
@@ -204,10 +212,6 @@ void AiEsp32RotaryEncoder::begin()
 
 	// Initialize rotary encoder reading and decoding
 	this->previous_butt_state = 0;
-	if (this->encoderButtonPin >= 0)
-	{
-		pinMode(this->encoderButtonPin, INPUT_PULLUP);
-	}
 }
 
 ButtonState AiEsp32RotaryEncoder::currentButtonState()
@@ -242,43 +246,37 @@ void AiEsp32RotaryEncoder::disable()
 	this->isEnabled = false;
 }
 
-bool AiEsp32RotaryEncoder::isEncoderButtonClicked(unsigned long maximumWaitMilliseconds)
+void AiEsp32RotaryEncoder::update()
 {
-	static bool wasTimeouted = false;
-	int button = 1 - digitalRead(encoderButtonPin);
-	if (!button)
+}
+
+bool AiEsp32RotaryEncoder::isEncoderButtonClicked()
+{
+	bool result = wasClicked;
+	wasClicked = false;
+
+	if (result && 0 != lastLongDuration)
 	{
-		if (wasTimeouted)
-		{
-			wasTimeouted = false;
-			return true;
-		}
-		return false;
-	}
-	delay(30); //debounce
-	button = 1 - digitalRead(encoderButtonPin);
-	if (!button)
-	{
-		return false;
+		result = false;
+		lastLongDuration = 0;
 	}
 
-	//wait release of button but only maximumWaitMilliseconds
-	wasTimeouted = false;
-	unsigned long waitUntil = millis() + maximumWaitMilliseconds;
-	while (1 - digitalRead(encoderButtonPin))
+	return result;
+}
+
+bool AiEsp32RotaryEncoder::isEncoderButtonLongClicked(long duration)
+{
+	long time = millis();
+	if (lastReadButtonPressed > 0 && (buttonState == BUT_PUSHED || buttonState == BUT_DOWN) && time - lastReadButtonPressed > duration && lastLongDuration != duration)
 	{
-		if (millis() > waitUntil)
-		{
-			//button not released until timeout
-			wasTimeouted = true;
-			return false;
-		}
+		lastLongDuration = duration;
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 bool AiEsp32RotaryEncoder::isEncoderButtonDown()
 {
-	return digitalRead(encoderButtonPin) ? false : true;
+	return digitalRead(encoderButtonPin) ? true : false;
 }
